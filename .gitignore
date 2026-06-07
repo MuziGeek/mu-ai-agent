@@ -31,5 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### CUSTOM  ###
+.env
 /src/main/resources/application-local.yml
 /src/test/
