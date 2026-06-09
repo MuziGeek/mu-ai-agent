@@ -51,19 +51,44 @@ public class InterViewApp {
     /**
      * 构造器注入所有依赖。
      *
-     * 【依赖注入说明】
-     * Spring 会自动注入以下 Bean：
-     *   - dashscopeChatModel：阿里云 DashScope 的 AI 模型（由 spring-ai-alibaba-starter-dashscope 自动配置）
-     *   - sensitiveWordFilter：我们自定义的敏感词过滤器（@Component 标注的 SensitiveWordFilter Bean）
+     * 【ChatMemoryRepository 的可替换实现】
+     * Spring AI 提供了多种 ChatMemoryRepository 实现，可灵活切换：
+     *   - InMemoryChatMemoryRepository：内存存储，重启丢失（开发调试用）
+     *   - FileBasedChatMemory：文件持久化（本项目自定义实现，用 Kryo 序列化）
+     *   - DbChatMemoryRepository：数据库持久化（本项目自定义实现，手动拆解 Message 字段）
+     *   - JdbcChatMemoryRepository：Spring AI 官方数据库实现（生产环境推荐）
+     *
+     * 三种存储方式的核心区别在于如何处理 Message 接口的多态序列化：
+     *   - Kryo：二进制序列化，自动嵌入类信息，反序列化时自动还原正确子类
+     *   - 数据库（Db/Jdbc）：拆解为 content + type 两个字段存储，读取时 switch 手动还原子类
      *
      * @param dashscopeChatModel DashScope 聊天模型
      * @param sensitiveWordFilter 敏感词过滤器 Bean
      */
     public InterViewApp(ChatModel dashscopeChatModel, SensitiveWordFilter sensitiveWordFilter) {
-        // 初始化基于内存的对话记忆
-        // ChatMemoryRepository 是消息存储的抽象，InMemoryChatMemoryRepository 使用内存存储
-        // （生产环境可替换为 Redis/MySQL 实现持久化）
-        ChatMemoryRepository repository = new InMemoryChatMemoryRepository();
+        // ========================================
+        // 存储方式一：文件持久化（FileBasedChatMemory + Kryo）
+        // 对话记录以 Kryo 二进制格式保存到 chat-memory/ 目录，重启不丢失
+        // Kryo 自动处理 Message 接口的多态序列化（UserMessage/AssistantMessage 等）
+        // ========================================
+        String fileDir = System.getProperty("user.dir") + "/chat-memory";
+        ChatMemoryRepository repository = new FileBasedChatMemory(fileDir);
+
+        // ========================================
+        // 存储方式二：内存存储（InMemoryChatMemoryRepository）
+        // 简单轻量，但重启后对话历史丢失。适合开发调试。
+        // ========================================
+        // ChatMemoryRepository repository = new InMemoryChatMemoryRepository();
+
+        // ========================================
+        // 存储方式三：数据库持久化（DbChatMemoryRepository）
+        // 需要先执行 db/chat_memory_schema.sql 创建表，并配置数据源。
+        // 该实现手动拆解 Message 为 content + type 字段，读取时 switch 还原子类，
+        // 完全绕开了多态序列化问题。
+        //
+        // 使用方式（需要注入 JdbcTemplate，并移除 DataSourceAutoConfiguration 排除）：
+        // ChatMemoryRepository repository = new DbChatMemoryRepository(jdbcTemplate);
+        // ========================================
 
         // MessageWindowChatMemory：滑动窗口式的记忆管理
         // maxMessages=10 表示只保留最近 10 条消息，防止上下文过长导致 token 超限
@@ -80,11 +105,9 @@ public class InterViewApp {
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),
 
                         // Advisor 2：敏感词过滤（order=0，最先执行）
-                        // 在请求到达模型之前，先清洗用户输入中的敏感词
-                        // sensitiveWordFilter 是 Spring 自动注入的 Bean
                         new SensitiveWordAdvisor(sensitiveWordFilter),
 
-                        // Advisor 3：自定义日志拦截器 —— 记录请求和响应的详细内容
+                        // Advisor 3：自定义日志拦截器
                         MyLoggerAdvisor.builder().build()
                 )
                 .build();
@@ -122,26 +145,6 @@ public class InterViewApp {
 
 
     }
-
-    public InterViewApp(ChatModel dashscopeChatModel) {
-        // 初始化基于文件的对话记忆（FileBasedChatMemory 实现 ChatMemoryRepository）
-        String fileDir = System.getProperty("user.dir") + "/chat-memory";
-        ChatMemoryRepository repository = new FileBasedChatMemory(fileDir);
-
-        // 用 MessageWindowChatMemory 包装，实现滑动窗口式记忆管理
-        ChatMemory chatMemory = MessageWindowChatMemory.builder()
-                .chatMemoryRepository(repository)
-                .maxMessages(10)
-                .build();
-
-        chatClient = ChatClient.builder(dashscopeChatModel)
-                .defaultSystem(SYSTEM_PROMPT)
-                .defaultAdvisors(
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                )
-                .build();
-    }
-
 
 
 }
