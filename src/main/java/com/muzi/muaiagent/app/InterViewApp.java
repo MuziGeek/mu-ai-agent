@@ -2,6 +2,7 @@ package com.muzi.muaiagent.app;
 
 import com.muzi.muaiagent.advisor.MyLoggerAdvisor;
 import com.muzi.muaiagent.advisor.SensitiveWordAdvisor;
+import com.muzi.muaiagent.chatmemory.FileBasedChatMemory;
 import com.muzi.muaiagent.filter.SensitiveWordFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -121,6 +122,26 @@ public class InterViewApp {
 
 
     }
+
+    public InterViewApp(ChatModel dashscopeChatModel) {
+        // 初始化基于文件的对话记忆（FileBasedChatMemory 实现 ChatMemoryRepository）
+        String fileDir = System.getProperty("user.dir") + "/chat-memory";
+        ChatMemoryRepository repository = new FileBasedChatMemory(fileDir);
+
+        // 用 MessageWindowChatMemory 包装，实现滑动窗口式记忆管理
+        ChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(repository)
+                .maxMessages(10)
+                .build();
+
+        chatClient = ChatClient.builder(dashscopeChatModel)
+                .defaultSystem(SYSTEM_PROMPT)
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                )
+                .build();
+    }
+
 
 
 }
