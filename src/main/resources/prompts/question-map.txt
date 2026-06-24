@@ -1,0 +1,6 @@
+请分别针对「{categories}」各出一道 Java 后端面试题。
+要求：以分类名称作为 Map 的 key，value 必须是一个完整的对象，
+包含 question（问题）、referenceAnswer（参考答案）、
+keyPoints（关键要点列表）、difficultyLevel（难度等级）、
+followUpDirections（追问方向列表）、techCategory（技术分类）这些字段。
+注意：value 不能是字符串，必须是包含上述所有字段的 JSON 对象。

@@ -4,6 +4,7 @@ import com.muzi.muaiagent.advisor.MyLoggerAdvisor;
 import com.muzi.muaiagent.advisor.SensitiveWordAdvisor;
 import com.muzi.muaiagent.chatmemory.FileBasedChatMemory;
 import com.muzi.muaiagent.filter.SensitiveWordFilter;
+import com.muzi.muaiagent.service.PromptTemplateService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
@@ -45,8 +46,11 @@ public class InterViewApp {
 
     private final ChatClient chatClient;
 
-    private static final String SYSTEM_PROMPT = "你是面试助手，专注于 Java 后端工程师求职面试的复习陪练。\n" +
-            "采用\"以教促学\"策略，通过**纯提示 + 逐题交互**模式帮助用户掌握面试知识点。";
+    /**
+     * 系统提示词模板名称（对应 resources/prompts/interview-system.txt）。
+     * 将系统提示词外置到资源文件中，便于运营人员随时调整话术，无需修改代码和重新编译。
+     */
+    private static final String SYSTEM_PROMPT_TEMPLATE = "interview-system";
 
     /**
      * 构造器注入所有依赖。
@@ -62,10 +66,12 @@ public class InterViewApp {
      *   - Kryo：二进制序列化，自动嵌入类信息，反序列化时自动还原正确子类
      *   - 数据库（Db/Jdbc）：拆解为 content + type 两个字段存储，读取时 switch 手动还原子类
      *
-     * @param dashscopeChatModel DashScope 聊天模型
-     * @param sensitiveWordFilter 敏感词过滤器 Bean
+     * @param dashscopeChatModel    DashScope 聊天模型
+     * @param sensitiveWordFilter   敏感词过滤器 Bean
+     * @param promptTemplateService Prompt 模板加载服务，用于从资源文件读取系统提示词
      */
-    public InterViewApp(ChatModel dashscopeChatModel, SensitiveWordFilter sensitiveWordFilter) {
+    public InterViewApp(ChatModel dashscopeChatModel, SensitiveWordFilter sensitiveWordFilter,
+                        PromptTemplateService promptTemplateService) {
         // ========================================
         // 存储方式一：文件持久化（FileBasedChatMemory + Kryo）
         // 对话记录以 Kryo 二进制格式保存到 chat-memory/ 目录，重启不丢失
@@ -99,7 +105,8 @@ public class InterViewApp {
 
         // 构建 ChatClient —— Spring AI 的核心对话客户端
         chatClient = ChatClient.builder(dashscopeChatModel)
-                .defaultSystem(SYSTEM_PROMPT)       // 设置系统提示词（角色设定）
+                // 从资源文件加载系统提示词（而非硬编码），修改提示词只需编辑 txt 文件
+                .defaultSystem(promptTemplateService.loadTemplate(SYSTEM_PROMPT_TEMPLATE))
                 .defaultAdvisors(
                         // Advisor 1：对话记忆 —— 让 AI 能"记住"之前的对话上下文
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),

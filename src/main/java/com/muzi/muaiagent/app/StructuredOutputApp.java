@@ -3,6 +3,7 @@ package com.muzi.muaiagent.app;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.muzi.muaiagent.model.InterviewQuestion;
 import com.muzi.muaiagent.model.InterviewStudyPlan;
+import com.muzi.muaiagent.service.PromptTemplateService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
@@ -33,8 +34,35 @@ public class StructuredOutputApp {
 
     private final ChatClient chatClient;
 
-    public StructuredOutputApp(ChatModel dashscopeChatModel) {
+    /**
+     * Prompt 模板加载服务，用于从 resources/prompts/ 目录读取模板文件并填充变量。
+     * 将 prompt 文本从 Java 代码中分离出来，便于独立维护和调优。
+     */
+    private final PromptTemplateService promptTemplateService;
+
+    /**
+     * JSON 格式描述常量，供"手动解析"模式的模板变量 {formatInstruction} 使用。
+     * JSON 中的大括号 {} 会和 PromptTemplate 的 ST4 变量占位符冲突，
+     * 所以将 JSON 格式作为变量值传入，而非写在模板文件中。
+     */
+    private static final String JSON_FORMAT_INSTRUCTION = """
+            请严格按照以下 JSON 格式返回，不要包含任何额外说明或 markdown 代码块标记：
+            {
+              "question": "面试问题",
+              "referenceAnswer": "参考答案",
+              "keyPoints": ["要点1", "要点2"],
+              "difficultyLevel": "入门/中级/高级",
+              "followUpDirections": ["追问方向1"],
+              "techCategory": "技术分类"
+            }""";
+
+    /**
+     * @param dashscopeChatModel    DashScope 聊天模型（由 spring-ai-alibaba 自动注入）
+     * @param promptTemplateService Prompt 模板加载服务
+     */
+    public StructuredOutputApp(ChatModel dashscopeChatModel, PromptTemplateService promptTemplateService) {
         this.chatClient = ChatClient.builder(dashscopeChatModel).build();
+        this.promptTemplateService = promptTemplateService;
     }
 
     // ============================================================
@@ -54,8 +82,11 @@ public class StructuredOutputApp {
      * @return 结构化的面试题对象
      */
     public InterviewQuestion getSingleQuestion(String topic) {
+        // 从模板文件 prompts/single-question.txt 加载 prompt，并替换 {topic} 变量
+        String promptText = promptTemplateService.render("single-question",
+                Map.of("topic", topic));
         return chatClient.prompt()
-                .user("请围绕「" + topic + "」出一道 Java 后端面试题，包含参考答案、关键要点、难度等级和追问方向")
+                .user(promptText)
                 .call()
                 .entity(InterviewQuestion.class);
     }
@@ -77,8 +108,11 @@ public class StructuredOutputApp {
      * @return 面试题列表
      */
     public List<InterviewQuestion> getQuestionList(String topic, int count) {
+        // 从模板文件 prompts/question-list.txt 加载 prompt，替换 {topic} 和 {count}
+        String promptText = promptTemplateService.render("question-list",
+                Map.of("topic", topic, "count", count));
         return chatClient.prompt()
-                .user("请围绕「" + topic + "」出 " + count + " 道 Java 后端面试题，每道包含参考答案、关键要点、难度和追问方向")
+                .user(promptText)
                 .call()
                 .entity(new ParameterizedTypeReference<List<InterviewQuestion>>() {});
     }
@@ -101,13 +135,11 @@ public class StructuredOutputApp {
      */
     public Map<String, InterviewQuestion> getQuestionMap(List<String> categories) {
         String categoryStr = String.join("、", categories);
+        // 从模板文件 prompts/question-map.txt 加载 prompt，替换 {categories}
+        String promptText = promptTemplateService.render("question-map",
+                Map.of("categories", categoryStr));
         return chatClient.prompt()
-                .user("请分别针对「" + categoryStr + "」各出一道 Java 后端面试题。\n" +
-                        "要求：以分类名称作为 Map 的 key，value 必须是一个完整的对象，" +
-                        "包含 question（问题）、referenceAnswer（参考答案）、" +
-                        "keyPoints（关键要点列表）、difficultyLevel（难度等级）、" +
-                        "followUpDirections（追问方向列表）、techCategory（技术分类）这些字段。\n" +
-                        "注意：value 不能是字符串，必须是包含上述所有字段的 JSON 对象。")
+                .user(promptText)
                 .call()
                 .entity(new ParameterizedTypeReference<Map<String, InterviewQuestion>>() {});
     }
@@ -129,9 +161,11 @@ public class StructuredOutputApp {
      */
     public InterviewStudyPlan getStudyPlan(String techDirection, List<String> focusAreas) {
         String focusStr = String.join("、", focusAreas);
+        // 从模板文件 prompts/study-plan.txt 加载 prompt，替换 {techDirection} 和 {focusAreas}
+        String promptText = promptTemplateService.render("study-plan",
+                Map.of("techDirection", techDirection, "focusAreas", focusStr));
         return chatClient.prompt()
-                .user("请为「" + techDirection + "」方向的求职者制定一份面试复习计划，" +
-                        "重点考察：" + focusStr + "，包含 2-3 道练习题和学习建议")
+                .user(promptText)
                 .call()
                 .entity(InterviewStudyPlan.class);
     }
@@ -156,21 +190,14 @@ public class StructuredOutputApp {
      * @return 解析后的面试题对象
      */
     public InterviewQuestion getQuestionManual(String topic) {
-        // 手动构造格式指令（替代 BeanOutputConverter.getFormat() 自动生成的）
-        String formatInstruction = """
-                请严格按照以下 JSON 格式返回，不要包含任何额外说明或 markdown 代码块标记：
-                {
-                  "question": "面试问题",
-                  "referenceAnswer": "参考答案",
-                  "keyPoints": ["要点1", "要点2"],
-                  "difficultyLevel": "入门/中级/高级",
-                  "followUpDirections": ["追问方向1"],
-                  "techCategory": "技术分类"
-                }
-                """;
+        // 从模板文件 prompts/question-manual.txt 加载 prompt
+        // 模板中使用 {topic} 和 {formatInstruction} 两个变量
+        // JSON 格式描述作为 formatInstruction 变量传入，避免大括号与 ST4 模板语法冲突
+        String promptText = promptTemplateService.render("question-manual",
+                Map.of("topic", topic, "formatInstruction", JSON_FORMAT_INSTRUCTION));
 
         String rawJson = chatClient.prompt()
-                .user("请围绕「" + topic + "」出一道 Java 后端面试题。\n" + formatInstruction)
+                .user(promptText)
                 .call()
                 .content();
 
