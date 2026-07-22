@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -145,7 +146,7 @@ public class DbChatMemoryRepository implements ChatMemoryRepository {
                 // ToolResponseMessage 比较特殊：它的实际内容（工具调用结果）
                 // 结构复杂，在简化存储中丢失了。这里创建一个空实现。
                 // 对于聊天记忆场景，工具调用记录通常不需要完整还原。
-                case TOOL -> new ToolResponseMessage(List.of());
+                case TOOL -> ToolResponseMessage.builder().build();
             };
         }, conversationId);
     }

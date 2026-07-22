@@ -1,0 +1,19 @@
+# ✅Java有协程吗？
+
+# 典型回答
+
+
+因为Go有协程，所以在一些Go的公司，如字节，腾讯等在面试的时候，或者是有些开发者Java和go都用过的话，面试官可能会问这个问题。
+
+
+
+Java中是有协程的，叫虚拟线程：
+
+
+
+[✅JDK21 中的虚拟线程是怎么回事？](https://www.yuque.com/hollis666/un6qyk/ac1a0q)
+
+
+
+> 更新: 2026-01-17 14:15:30  
+> 原文: <https://www.yuque.com/hollis666/un6qyk/nanvlfcf066e664a>

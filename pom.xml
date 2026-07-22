@@ -31,6 +31,18 @@
     </properties>
     <dependencyManagement>
         <dependencies>
+            <!--
+                Spring AI 1.1.8 BOM：锁定 spring-ai-* 框架模块版本。
+                放在 alibaba BOM 之前，确保框架版本由 Spring AI BOM 管理。
+                spring-ai-alibaba-starter-dashscope 1.1.2.1 依赖 Spring AI 1.1.x API。
+            -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>1.1.8</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.alibaba.cloud.ai</groupId>
                 <artifactId>spring-ai-alibaba-bom</artifactId>
@@ -68,21 +80,15 @@
             <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
             <version>4.4.0</version>
         </dependency>
-        <!-- https://mvnrepository.com/artifact/com.alibaba/dashscope-sdk-java -->
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>dashscope-sdk-java</artifactId>
-            <version>2.19.1</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
-        </dependency>
-
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter-memory</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.alibaba.cloud.ai</groupId>
+                    <artifactId>spring-ai-alibaba-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Source: https://mvnrepository.com/artifact/com.alibaba/dashscope-sdk-java -->
@@ -93,24 +99,83 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- Spring AI alibaba-->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-agent-framework</artifactId>
-            <version>1.1.2.0</version>
-        </dependency>
-
+        <!--
+            Spring AI Alibaba DashScope 1.1.2.1：
+            starter 自带 dashscope + autoconfigure，版本统一为 1.1.2.1，
+            配合 spring-ai-bom 1.1.8 使用，无需额外指定 core 版本。
+        -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>
             <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
             <version>1.1.2.1</version>
         </dependency>
-
-        <!-- https://mvnrepository.com/artifact/dev.langchain4j/langchain4j-community-dashscope -->
+        <!--
+            显式声明 1.1.2.1 覆盖 alibaba BOM 1.0.0.2 的版本管理，
+            否则 BOM 会将 starter 传递的 autoconfigure-dashscope 降级到 1.0.0.2，
+            导致旧版 core（DashScopeChatOptions 不兼容）和损坏的自动配置类被引入。
+        -->
         <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-community-dashscope</artifactId>
-            <version>1.0.0-beta2</version>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-autoconfigure-dashscope</artifactId>
+            <version>1.1.2.1</version>
+        </dependency>
+
+        <!--
+            Spring AI Tika 文档解析器：支持 PDF、DOCX、HTML、TXT 等多种格式。
+            Spring AI BOM 1.1.8 管理版本号。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-tika-document-reader</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI SimpleVectorStore：内存向量存储，适合开发和小规模数据。
+            Spring AI BOM 1.1.8 管理版本号。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-vector-store</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI VectorStore Advisor：提供 QuestionAnswerAdvisor，
+            自动将用户查询在向量存储中检索相关文档，拼入 prompt 实现 RAG。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
+        <!--
+            Spring Boot JDBC Starter：
+            激活 DataSourceAutoConfiguration + JdbcTemplateAutoConfiguration，
+            为 PgVectorStore 提供 DataSource 和 JdbcTemplate Bean。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI PgVector 向量存储 Starter：
+            基于 PostgreSQL pgvector 扩展的持久化向量存储，替代内存版 SimpleVectorStore。
+            版本由 spring-ai-bom 1.1.8 管理，无需显式指定。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
+
+        <!--
+            PostgreSQL JDBC 驱动：
+            spring-ai-starter-vector-store-pgvector 已传递引入，显式声明为最佳实践，
+            版本由 spring-boot-starter-parent 管理。
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- 
@@ -132,7 +197,6 @@
             <artifactId>kryo</artifactId>
             <version>5.6.2</version>
         </dependency>
-
 
     </dependencies>
 
