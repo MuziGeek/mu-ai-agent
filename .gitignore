@@ -36,3 +36,4 @@ build/
 .env
 /src/main/resources/application-local.yml
 /src/test/
+/src/main/resources/document/Java8Gu5/
