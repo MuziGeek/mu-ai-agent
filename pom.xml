@@ -130,6 +130,19 @@
         </dependency>
 
         <!--
+            jtokkit：OpenAI BPE 分词器的 Java 实现，TokenCountBatchingStrategy 用它按 token 预算切批。
+            DashScopeBatchingStrategy 直接引用其 EncodingType，属「直接使用的库应显式声明」，
+            不再依赖 spring-ai-tika-document-reader → spring-ai-commons 的传递引入
+            （传递依赖一旦上游调整就会被无声移除，编译期才暴露）。
+            spring-ai-bom 1.1.8 未管理该版本，显式锁定为当前传递引入的 1.1.0，避免版本漂移。
+        -->
+        <dependency>
+            <groupId>com.knuddels</groupId>
+            <artifactId>jtokkit</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+
+        <!--
             Spring AI SimpleVectorStore：内存向量存储，适合开发和小规模数据。
             Spring AI BOM 1.1.8 管理版本号。
         -->
@@ -222,6 +235,16 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
+                            <!--
+                                必须显式声明版本，否则 IDEA 解析 annotationProcessorPaths 时
+                                不会回溯父 POM（spring-boot-dependencies）管理的版本，
+                                会把版本记成 "unknown"，并生成一个不存在的处理器路径
+                                （.../lombok/unknown/lombok-unknown.jar），
+                                导致注解处理器加载失败：@Slf4j 不生成 log 字段，报「找不到符号 变量 log」。
+                                Maven 侧能正常解析，所以表现为「命令行编译通过、IDEA 编译报错」。
+                                ${lombok.version} 由 spring-boot-dependencies 定义（如 1.18.38）。
+                            -->
+                            <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

@@ -6,7 +6,6 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
@@ -24,13 +23,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DocumentLoader {
 
-    private final VectorStore vectorStore;
-
     /**
-     * DDD 文档目录（classpath 路径）。
+     * DDD 知识库文档的 classpath 扫描路径。
+     * 目录不存在或其中没有 .md 文件时，{@link #loadDddDocuments()} 只打 warn 日志并返回 0，不会抛异常。
      */
-    @Value("classpath:document/Java8Gu5/DDD")
-    private Resource dddDir;
+    private static final String DDD_DOCUMENT_PATTERN = "classpath:document/Java8Gu5/DDD/**/*.md";
+
+    private final VectorStore vectorStore;
 
     /**
      * 加载并解析 DDD 目录下的所有文档，分块后写入向量数据库。
@@ -39,7 +38,7 @@ public class DocumentLoader {
      */
     public int loadDddDocuments() throws IOException {
         ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-        Resource[] resources = resolver.getResources("classpath:document/Java8Gu5/DDD/**/*.md");
+        Resource[] resources = resolver.getResources(DDD_DOCUMENT_PATTERN);
 
         if (resources.length == 0) {
             log.warn("未找到 DDD 目录下的任何文档");
@@ -69,15 +68,10 @@ public class DocumentLoader {
         }
 
         if (!allChunks.isEmpty()) {
-            // DashScope text-embedding-v3 单次请求最多 10 个文档，分批写入
-            int batchSize = 10;
-            for (int i = 0; i < allChunks.size(); i += batchSize) {
-                int end = Math.min(i + batchSize, allChunks.size());
-                List<Document> batch = allChunks.subList(i, end);
-                vectorStore.add(batch);
-                log.info("写入批次 {}/{} ({} 个分块)", (i / batchSize) + 1,
-                        (int) Math.ceil((double) allChunks.size() / batchSize), batch.size());
-            }
+            // 这里不再手动按 10 条切片：单次请求的文档条数与 token 预算统一由 BatchingStrategy
+            // （见 DashScopeBatchingStrategy）负责，调用方只需一次性提交，批次的日志也在策略里输出。
+            // 好处是「DashScope 单次最多 10 条文本」这个厂商限制只存在于一处，改限制不用改这里。
+            vectorStore.add(allChunks);
             log.info("共写入 {} 个文档分块到向量存储", allChunks.size());
         }
 
