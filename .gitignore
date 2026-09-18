@@ -33,7 +33,8 @@ build/
 .vscode/
 
 ### CUSTOM  ###
+# 只忽略本地专属配置：application-local.yml 里是真实的数据库地址与 DashScope Key，绝不入库。
+# 用无锚点写法，任意层级出现同名文件都会被忽略（原写法带 /src/main/resources/ 锚点，
+# 只能保护那一处，根目录或其他模块下的同名文件不受保护）。
 .env
-/src/main/resources/application-local.yml
-/src/test/
-/src/main/resources/document/Java8Gu5/
+application-local.yml
