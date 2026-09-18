@@ -53,3 +53,49 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+# ============================================================
+# RAG 预检索（pre-retrieval）：向量检索发生之前，对用户 query 做的加工
+# ------------------------------------------------------------
+# 四项能力全部实现、全部可单独开关，默认只开「压缩 + 扩展」：
+#   - 压缩默认开：本项目有对话记忆，多轮追问是主要交互形态，收益最直接
+#   - 扩展默认开：一条问题扩成多条变体分别检索再合并，召回提升最明显
+#   - 重写默认关：与压缩职责重叠（都在解决多轮指代），串行会白多一次大模型调用
+#   - 翻译默认关：中文提问 + 中文知识库，翻译只会降低召回
+# 默认链路每次问答比改造前多 2 次大模型调用（压缩 1 次 + 扩展 1 次）。
+# ============================================================
+mu-ai:
+  rag:
+    preretrieval:
+      compression:
+        # 把依赖前文的指代（「它 / 这个 / 那怎么办」）补全成可独立检索的完整问题
+        enabled: true
+      rewrite:
+        # 把口语化、含糊的提问润色成检索友好的措辞；与压缩重叠，默认关
+        enabled: false
+        # 提示词里会说明「该 query 将用于检索 vector store」，据此优化改写方向
+        target-search-system: vector store
+      translation:
+        # 仅在知识库为外文语料时才有意义，默认关
+        enabled: false
+        target-language: English
+      expansion:
+        # 一条问题扩成多条措辞不同的变体，各自检索后合并去重
+        enabled: true
+        # 变体数量：再多收益递减，而检索次数线性增长
+        number-of-queries: 3
+        # 保留原始查询作为保险：大模型改写跑偏时，至少不比不做扩展更差
+        include-original: true
+      # 与改造前 QuestionAnswerAdvisor 的默认值保持一致，
+      # 目的是让「换 advisor」本身不改变检索结果，行为差异只来自新增的预检索环节
+      retrieval:
+        top-k: 4
+        # <= 0 解释为「不设阈值」：本项目相似度绝对值偏高，硬设阈值容易误伤
+        similarity-threshold: 0.0
+      augmenter:
+        # true = 检索为空时也交给模型作答，拒答由 system 提示词统一负责（避免两处重复约束）
+        allow-empty-context: true
+      # 必须大于对话记忆 advisor 的 order（HIGHEST_PRECEDENCE + 1000），
+      # 否则预检索读不到对话历史，多轮指代消解会静默失效
+      advisor-order: 0
+

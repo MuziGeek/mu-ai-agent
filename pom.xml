@@ -152,12 +152,29 @@
         </dependency>
 
         <!--
-            Spring AI VectorStore Advisor：提供 QuestionAnswerAdvisor，
-            自动将用户查询在向量存储中检索相关文档，拼入 prompt 实现 RAG。
+            Spring AI VectorStore Advisor：提供 QuestionAnswerAdvisor 与 VectorStoreChatMemoryAdvisor。
+            预检索改造后 RagApp 已改用 RetrievalAugmentationAdvisor，本模块当前无代码引用；
+            保留它是因为 VectorStoreChatMemoryAdvisor（把对话记忆也落到向量库做语义召回）
+            是下一步的自然选项，而移除会一并动到传递依赖树，收益不抵风险。
         -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI RAG 模块：提供 RetrievalAugmentationAdvisor 与预检索组件
+            （CompressionQueryTransformer / RewriteQueryTransformer / TranslationQueryTransformer /
+            MultiQueryExpander）、VectorStoreDocumentRetriever、ContextualQueryAugmenter，
+            是预检索优化链路的载体。
+            与 jtokkit 同理，属「直接 import 的库应显式声明」：
+            它当前是经 spring-ai-alibaba-starter-dashscope → autoconfigure-dashscope → dashscope
+            （声明 spring-ai-rag:1.1.2）传递引入、再被 spring-ai-bom 1.1.8 覆盖版本得到的，
+            上游一旦调整依赖树，这些类型会在编译期无声消失。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-rag</artifactId>
         </dependency>
 
         <!--
