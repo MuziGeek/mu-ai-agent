@@ -119,8 +119,10 @@
 - 知识库初始化与 RAG 问答的触发入口只存在于 `PgVectorVectorStoreConfigTest`
   （`testInitKnowledgeBase` / `testChatWithRag` / `testChatWithRagMultiTurn`），生产代码里没有
   Runner/Controller 调用 `RagApp.initKnowledgeBase()` 与 `RagApp.doChatWithRag()`（有意为之）
-- **`.gitignore` 第 38 行有 `/src/test/`**：整个测试目录**刻意不入库**，
-  所以新增测试类不会出现在 `git status` 里 —— 是约定，不是遗漏
+- **测试代码与知识库文档已纳入版本管理**（2026-09-18 起）：
+  `.gitignore` 中原有的 `/src/test/` 与 `/src/main/resources/document/Java8Gu5/`
+  两条忽略规则已移除 —— 测试类（6 个）与 DDD 知识库文档（7 篇 md + 6 张配图）随仓库版本化。
+  完整提交 `a5fb30f`
 
 ## 博客笔记系列（发布通道）
 - 站点：`D:\GitProject\muzi-blog`（Hexo 风格静态博客，地址 https://easymuzi.cn）
@@ -143,8 +145,10 @@
 
 ## 已知未修复问题
 - `application-local.yml` 明文硬编码 RDS 密码与 DashScope Key，建议改环境变量
-- `.gitignore` 只写了 `/src/main/resources/application-local.yml`（带路径锚点），
-  根目录同名文件不受保护
+- ~~`.gitignore` 只写了 `/src/main/resources/application-local.yml`（带路径锚点），
+  根目录同名文件不受保护~~ → **2026-09-18 已修复**：改为无锚点写法 `application-local.yml`，
+  任意层级出现同名文件都会被忽略。当前 `.gitignore` 的 CUSTOM 段只保留
+  `.env` 与 `application-local.yml` 两项，即「只忽略本地专属配置」
 - `RagApp.doChatWithRag()` 在 `chatResponse` 为 null 时返回 null（未抛异常），调用方需自行判空
 
 ## 运维小工具（临时脚本，需要时重建）
