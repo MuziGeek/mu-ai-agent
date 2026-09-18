@@ -65,6 +65,36 @@
   （厂商限制现在只存在于策略一处）
 - 实测：12 个分块 → 2 个批次；灌库结果与改造前完全一致（相似度 0.8209 / 0.4438 / 0.4339 未变）
 
+## 预检索（pre-retrieval）实现（Spring AI 1.1.8，字节码确认）
+- 真实包路径：`org.springframework.ai.rag.preretrieval.query.{transformation,expansion}.X`
+  （不是直觉的 `rag.query.transformer`）；类都在 `spring-ai-rag:1.1.8`，已在 compile classpath
+  （来源链 `spring-ai-alibaba-dashscope` → … → `spring-ai-rag:1.1.2`，被 BOM 覆盖为 1.1.8），
+  现已在 pom 中**显式声明**
+- 四个组件 builder 都要 **`ChatClient.Builder`**（不是 `ChatClient`），可共用一个实例：
+  已确认 `Builder.chatClientBuilder(...)` 只存字段转发，构造器不改写传入的 builder
+- `RetrievalAugmentationAdvisor` 执行顺序：串行 `queryTransformers` → `queryExpander.expand()`
+  → 每个 Query 并行检索 → `documentJoiner.join()` → `queryAugmenter.augment()`
+- **空值行为（易踩）**：`queryTransformers(null)` 抛异常（`Assert.noNullElements` 要求集合非 null，
+  必须传空列表）；`queryExpander(null)` **安全**（Builder 不校验，`before` 里 `ifnull` 跳过）；
+  `documentRetriever` 不能为 null
+- `MessageChatMemoryAdvisor` 默认 order = **-2147482648** = `HIGHEST_PRECEDENCE + 1000`；
+  `RetrievalAugmentationAdvisor` 默认 0。**预检索必须排在记忆之后**，否则读不到 prompt 里的历史，
+  多轮指代消解静默失效（不报错）
+- `ContextualQueryAugmenter` 默认模板是**英文**、`allowEmptyContext` 默认 **false**；
+  本项目换中文模板 + `allowEmptyContext=true`（拒答交给 system 提示词）
+- `PromptTemplate` 在 **spring-ai-model** jar（不在 client-chat）
+- `QueryTransformer` / `QueryExpander` 都是**函数式接口** → 测试可直接用 `q -> q` 当桩
+
+### 本项目的预检索装配
+- `rag/config/PreRetrievalProperties.java`：`@ConfigurationProperties("mu-ai.rag.preretrieval")`，
+  默认**只开压缩 + 扩展**（改写与压缩职责重叠、翻译对中文库有害），`advisor-order: 0`
+- `rag/config/PreRetrievalPipeline.java`：`record(List<QueryTransformer>, QueryExpander)`，
+  紧凑构造器把 null 列表归一成 `List.of()`
+- `rag/config/PreRetrievalConfig.java`：4 个 Bean；转换器**不单独注册 Bean**（避免注入歧义 +
+  便于断言）；`composeQueryTransformers` 是 **public static 纯函数**，装配顺序「压缩 → 改写 → 翻译」
+- `RagApp`：advisor 由 `QuestionAnswerAdvisor` 换成 `RetrievalAugmentationAdvisor`；
+  抽出 `MEMORY_ADVISOR_ORDER` / `LOGGER_ADVISOR_ORDER` 常量供测试引用
+
 ## 知识库文档目录（已对齐）
 - `DocumentLoader` 扫描路径：常量 `DDD_DOCUMENT_PATTERN = "classpath:document/Java8Gu5/DDD/**/*.md"`
 - 实际目录：`src/main/resources/document/Java8Gu5/DDD/`，含 7 个 .md + `img/` 图片
@@ -81,17 +111,36 @@
 - **会调用大模型的用例一律加 `@Tag("llm")`**，便于快速回归时排除：
   `mvn -B test -DexcludedGroups=llm`（已验证：排除后只跑确定性用例）
   - 断言只能写「检索非空」「回答非空白」这类确定性事实，答案对错靠人看日志
-- 测试类：`rag/PgVectorVectorStoreConfigTest`（6 个用例，1 个带 `@Tag("llm")`）、
-  `rag/EmbeddingBatchingStrategyTest`（5 个用例，纯内存切批计算，无需 `@Transactional`）
+- 测试类：`rag/PgVectorVectorStoreConfigTest`（7 个用例，2 个带 `@Tag("llm")`）、
+  `rag/EmbeddingBatchingStrategyTest`（5 个用例，纯内存切批计算，无需 `@Transactional`）、
+  `rag/PreRetrievalPipelineTest`（7 个用例，纯逻辑**不启 Spring**）、
+  `rag/PreRetrievalConfigTest`（4 个用例，容器装配，不调模型）、
+  `rag/PreRetrievalTransformerLlmTest`（4 个用例，**每方法都带 `@Tag("llm")`**）
 - 知识库初始化与 RAG 问答的触发入口只存在于 `PgVectorVectorStoreConfigTest`
-  （`testInitKnowledgeBase` / `testChatWithRag`），生产代码里没有 Runner/Controller 调用
-  `RagApp.initKnowledgeBase()` 与 `RagApp.doChatWithRag()`（有意为之）
+  （`testInitKnowledgeBase` / `testChatWithRag` / `testChatWithRagMultiTurn`），生产代码里没有
+  Runner/Controller 调用 `RagApp.initKnowledgeBase()` 与 `RagApp.doChatWithRag()`（有意为之）
+- **`.gitignore` 第 38 行有 `/src/test/`**：整个测试目录**刻意不入库**，
+  所以新增测试类不会出现在 `git status` 里 —— 是约定，不是遗漏
+
+## 博客笔记系列（发布通道）
+- 站点：`D:\GitProject\muzi-blog`（Hexo 风格静态博客，地址 https://easymuzi.cn）
+- 本项目的落点：`source/_posts/note/project/mu-ai-agent/mu-ai-agent-NN.md`，
+  分类恒为「笔记 / 项目 / 木南 AI 智能体」，文件名序号补两位
+- 发布用技能 `blog-note-publisher`（用户级技能，脚本 `scripts/blog_note.py`）
+  - 「在系列中间插篇」没有内置步骤：`create` 遇到已存在文件会拒绝，
+    必须先 `mv` 后续文件，并同步改 title、正文 H1、篇间「上一篇/下一篇」承接语
+- 站点约定：Frontmatter 只有 `title/date/categories/tags`；tags 最多 5 个；
+  正文用 ASCII 直引号（两侧带空格）；技术笔记**不写**日期天气流水行；
+  `core.autocrlf=true`（工作区 CRLF / 仓库 LF），无 `.gitattributes`
+- 「把本次对话总结成博客笔记」= 用户级惯例，且用户习惯**只落盘不推送**，
+  要推送必须先明确同意（推送即触发站点重建，等于对外发布）
 
 ## 代码风格
 - 注释、日志、`@DisplayName` 一律用中文，注释解释「为什么」而非「是什么」
 - `@Slf4j` + `@RequiredArgsConstructor`（Lombok）为主
 - 包结构：`advisor` / `app` / `chatmemory` / `config` / `controller` / `demo` / `filter` / `model` /
   `rag`（下分 `app` `config` `loader`）/ `service`
+
 ## 已知未修复问题
 - `application-local.yml` 明文硬编码 RDS 密码与 DashScope Key，建议改环境变量
 - `.gitignore` 只写了 `/src/main/resources/application-local.yml`（带路径锚点），
